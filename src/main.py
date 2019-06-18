@@ -1,4 +1,7 @@
+#%%
 # Code you have previously used to load data
+import seaborn as sns
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from sklearn.datasets import load_boston
@@ -7,14 +10,29 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeRegressor
 #from learntools.core import *
-import os
-cwd = os.getcwd()
-print(cwd)
+
 
 # Path of the file to read. We changed the directory structure to simplify submitting to a competition
 iowa_file_path = './input/train.csv'
 
+
+#%%
+
+# Deleting outliers
 home_data = pd.read_csv(iowa_file_path)
+print(home_data.shape)
+lm=sns.regplot(x='LotArea',y='SalePrice',data=home_data)
+lm.set(ylim=(0, 1200000),xlim=(0,250000))
+
+home_data = home_data[home_data.LotArea < 50000]
+print(home_data.shape)
+lm=sns.regplot(x='LotArea',y='SalePrice',data=home_data)
+lm.set(ylim=(0, 1200000),xlim=(0,250000))
+
+
+
+
+#%%
 # Create target object and call it y
 y = home_data.SalePrice
 # Create X
@@ -30,7 +48,9 @@ X=X.applymap(lambda s: neighborhood_dict.get(s) if s in neighborhood_dict else s
 initial_X = X
 initial_y = y
 
-
+#%%
+X
+# %%
 # Split into validation and training data
 train_X, val_X, train_y, val_y = train_test_split(X, y, random_state=1)
 
@@ -135,7 +155,4 @@ output.to_csv('submission.csv', index=False)
 
 
 
-
-
-
-
+#%%
