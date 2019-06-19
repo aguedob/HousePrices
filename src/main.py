@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import load_boston
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeRegressor
 #from learntools.core import *
@@ -21,13 +21,15 @@ iowa_file_path = './input/train.csv'
 # Deleting outliers
 home_data = pd.read_csv(iowa_file_path)
 print(home_data.shape)
-lm=sns.regplot(x='LotArea',y='SalePrice',data=home_data)
-lm.set(ylim=(0, 1200000),xlim=(0,250000))
+#lm=sns.regplot(x='GrLivArea',y='SalePrice',data=home_data)
+home_data = home_data[home_data.GrLivArea < 4500]
+#home_data["SalePrice"] = np.log1p(home_data["SalePrice"])
 
-home_data = home_data[home_data.LotArea < 50000]
+#lm=sns.regplot(x='GrLivArea',y='SalePrice',data=home_data)
+
+
 print(home_data.shape)
 lm=sns.regplot(x='LotArea',y='SalePrice',data=home_data)
-lm.set(ylim=(0, 1200000),xlim=(0,250000))
 
 
 
@@ -48,8 +50,6 @@ X=X.applymap(lambda s: neighborhood_dict.get(s) if s in neighborhood_dict else s
 initial_X = X
 initial_y = y
 
-#%%
-X
 # %%
 # Split into validation and training data
 train_X, val_X, train_y, val_y = train_test_split(X, y, random_state=1)
@@ -79,7 +79,6 @@ rf_val_predictions = rf_model.predict(val_X)
 rf_val_mae = mean_absolute_error(rf_val_predictions, val_y)
 
 print("Validation MAE for Random Forest Model: {:,.0f}".format(rf_val_mae))
-
 
 
 
