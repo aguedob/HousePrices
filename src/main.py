@@ -127,21 +127,22 @@ rf_model = RandomForestRegressor(random_state=1,n_estimators=100)
 rf_model.fit(train_X, train_y)
 rf_val_predictions = rf_model.predict(val_X)
 rf_val_mae = mean_absolute_error(rf_val_predictions, val_y)
-
 print("Validation MAE for Random Forest Model: {:,.0f}".format(rf_val_mae))
 
 
-xgb_model = XGBRegressor(random_state=1, objective='reg:squarederror', n_estimators=100)
-
+xgb_model = XGBRegressor(random_state=1, objective='reg:squarederror', silent=1, n_estimators=2800, learning_rate=0.015, max_depth=4, subsample=0.80, colsample_bytree=0.7, gamma=1  )
 xgb_model.fit(train_X, train_y)
 xgb_val_predictions = xgb_model.predict(val_X)
 xgb_val_mae = mean_absolute_error(xgb_val_predictions, val_y)
-
 print("Validation MAE for XGB Regressor Model: {:,.0f}".format(xgb_val_mae))
 
 
+
+
+
+
 # To improve accuracy, create a new Random Forest model which you will train on all training data
-rf_model_on_full_data = XGBRegressor(random_state=1, objective='reg:squarederror', n_estimators=100)
+rf_model_on_full_data = XGBRegressor(random_state=1, objective='reg:squarederror', silent=1, n_estimators=2800, learning_rate=0.015, max_depth=4, subsample=0.80, colsample_bytree=0.7, gamma=1 )
 
 # fit rf_model_on_full_data on all data from the training data
 rf_model_on_full_data.fit(input_X,y)
