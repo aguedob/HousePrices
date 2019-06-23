@@ -9,57 +9,107 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeRegressor
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder
+from xgboost import XGBRegressor
 #from learntools.core import *
 
 
+def prepareData(df):
+    df=df.drop(["MiscFeature","Fence","PoolQC","Alley","GarageCond","FireplaceQu","GarageFinish","BsmtQual","GarageQual"],axis=1)
+    df["LotFrontage"]=df["LotFrontage"].fillna(0)
+    df["MasVnrType"]=df["MasVnrType"].fillna("None")
+    df["GarageType"]=df["GarageType"].fillna("None")
+    df["Electrical"]=df["Electrical"].fillna("SBrkr")
+    df.GarageYrBlt.fillna(df.YearBuilt,inplace=True)
+    df["BsmtCond"]=df["BsmtCond"].fillna("TA")
+    df["BsmtFinType2"]=df["BsmtFinType2"].fillna("Unf")
+    df["BsmtFinType1"]=df["BsmtFinType1"].fillna("Unf")
+    df["BsmtExposure"]=df["BsmtExposure"].fillna("No")
+    df["MSZoning"]=df["MSZoning"].fillna("RF")
+
+
+    objects = []
+    for i in df.columns:
+        if df[i].dtype == object:
+            objects.append(i)
+
+    df.update(df[objects].fillna('None'))
+
+    numeric_dtypes = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+    numbers = []
+    for i in df.columns:
+        if df[i].dtype in numeric_dtypes:
+            numbers.append(i)
+    df.update(df[numbers].fillna(0))
+
+    X = pd.get_dummies(df, prefix_sep='_', drop_first=True)
+
+
+    # Categorical boolean mask
+    #categorical_feature_mask = df.dtypes==object
+    # filter categorical columns using mask and turn it into a list
+    #categorical_cols = df.columns[categorical_feature_mask].tolist()
+    #le = LabelEncoder()
+    # apply le on categorical feature columns
+    #df[categorical_cols] = df[categorical_cols].apply(lambda col: le.fit_transform(col))
+    #ohe = OneHotEncoder()
+    # instantiate OneHotEncoder
+    #ohe = OneHotEncoder(categorical_features = categorical_feature_mask, sparse=False ) 
+    # categorical_features = boolean mask for categorical columns
+    # sparse = False output an array not sparse matrix
+
+    # apply OneHotEncoder on categorical feature columns
+    #X_ohe = ohe.fit_transform(df) # It returns an numpy array
+    return X
+
+
+
 # Path of the file to read. We changed the directory structure to simplify submitting to a competition
-iowa_file_path = './input/train.csv'
+train_path = "./input/train.csv"
+test_path = "./input/test.csv"
 
+train_data = pd.read_csv(train_path)
+test_data = pd.read_csv(test_path)
 
-#%%
+print("Train set size:", train_data.shape)
+print("Test set size:", test_data.shape)
 
-# Deleting outliers
-home_data = pd.read_csv(iowa_file_path)
-print(home_data.shape)
-#lm=sns.regplot(x='GrLivArea',y='SalePrice',data=home_data)
-home_data = home_data[home_data.GrLivArea < 4500]
-#home_data["SalePrice"] = np.log1p(home_data["SalePrice"])
+# Deleting detected outliers
+train_data = train_data[train_data.GrLivArea < 4500]
+# Reset index
+train_data.reset_index(drop=True, inplace=True)
 
-#lm=sns.regplot(x='GrLivArea',y='SalePrice',data=home_data)
-
-
-print(home_data.shape)
-lm=sns.regplot(x='LotArea',y='SalePrice',data=home_data)
-
-
+train_features = train_data.drop(['SalePrice'], axis=1)
+test_features = test_data
 
 
 #%%
 # Create target object and call it y
-y = home_data.SalePrice
-# Create X
-features = ['LotArea', 'YearBuilt', '1stFlrSF', 'BsmtFinSF1', '2ndFlrSF', 'FullBath', 'BedroomAbvGr',  'YearBuilt', 'YearRemodAdd', 'TotRmsAbvGrd', 'OverallQual', 'OverallCond', 'Neighborhood','GrLivArea','TotalBsmtSF']
-X = home_data[features]
+y = train_data.SalePrice
+
+features = train_data.columns[:-1]
+# Prepare X
+X = prepareData(train_data[features])
+
+input_X = train_data[features]
+test_X = test_data[features]
+
+combined_X = pd.concat([input_X,test_X])
+
+combined_X = prepareData(combined_X)
+print(combined_X.shape)
 
 
-neighborhoods = X.Neighborhood.unique()
-neighborhood_dict = dict(zip(neighborhoods, range(len(neighborhoods))))
-
-X=X.applymap(lambda s: neighborhood_dict.get(s) if s in neighborhood_dict else s)
-
-initial_X = X
-initial_y = y
+input_X = combined_X.iloc[:len(y), :]
+test_X = combined_X.iloc[len(input_X):, :]
 
 # %%
 # Split into validation and training data
-train_X, val_X, train_y, val_y = train_test_split(X, y, random_state=1)
+train_X, val_X, train_y, val_y = train_test_split(input_X, y, random_state=1)
 
 # Specify Model
 iowa_model = DecisionTreeRegressor(random_state=1)
-# Fit Model
 iowa_model.fit(train_X, train_y)
-
-# Make validation predictions and calculate mean absolute error
 val_predictions = iowa_model.predict(val_X)
 val_mae = mean_absolute_error(val_predictions, val_y)
 print("Validation MAE when not specifying max_leaf_nodes: {:,.0f}".format(val_mae))
@@ -81,66 +131,24 @@ rf_val_mae = mean_absolute_error(rf_val_predictions, val_y)
 print("Validation MAE for Random Forest Model: {:,.0f}".format(rf_val_mae))
 
 
+xgb_model = XGBRegressor(random_state=1, objective='reg:squarederror', n_estimators=100)
 
+xgb_model.fit(train_X, train_y)
+xgb_val_predictions = xgb_model.predict(val_X)
+xgb_val_mae = mean_absolute_error(xgb_val_predictions, val_y)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def prepareDataFrame(path):
-    # load data
-    home_data =  pd.read_csv(path)
-    
-    # map to integers all columns
-    for y in home_data.columns:
-        if(home_data[y].dtype == np.float64 or home_data[y].dtype == np.int64):
-            pass
-        else:
-            neighborhoods = home_data[y].unique()
-            neighborhood_dict = dict(zip(neighborhoods, range(len(neighborhoods))))
-            home_data=home_data.applymap(lambda s: neighborhood_dict.get(s) if s in neighborhood_dict else s)
-    home_data=home_data.fillna(0)
-    return home_data
-
-
+print("Validation MAE for XGB Regressor Model: {:,.0f}".format(xgb_val_mae))
 
 
 # To improve accuracy, create a new Random Forest model which you will train on all training data
-rf_model_on_full_data = RandomForestRegressor(random_state=1, n_estimators=100)
+rf_model_on_full_data = XGBRegressor(random_state=1, objective='reg:squarederror', n_estimators=100)
 
 # fit rf_model_on_full_data on all data from the training data
-rf_model_on_full_data.fit(initial_X,initial_y)
+rf_model_on_full_data.fit(input_X,y)
 
 
 
-
-# path to file you will use for predictions
-test_data_path = './input/test.csv'
-
-# read test data file using pandas
-test_data = pd.read_csv(test_data_path).fillna(0)
-
-# create test_X which comes from test_data but includes only the columns you used for prediction.
-# The list of columns is stored in a variable called features
-test_X = test_data[features]
-
-neighborhoods = test_X.Neighborhood.unique()
-neighborhood_dict = dict(zip(neighborhoods, range(len(neighborhoods))))
-
-test_X=test_X.applymap(lambda s: neighborhood_dict.get(s) if s in neighborhood_dict else s)
-
+#%%
 # make predictions which we will submit. 
 test_preds = rf_model_on_full_data.predict(test_X)
 
@@ -155,3 +163,7 @@ output.to_csv('submission.csv', index=False)
 
 
 #%%
+
+
+
+
