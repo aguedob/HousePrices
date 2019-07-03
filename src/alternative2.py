@@ -7,13 +7,12 @@ import numpy as np
 from sklearn.datasets import load_boston
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.linear_model import Lasso, Ridge
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 from sklearn import preprocessing
 from xgboost import XGBRegressor
-from mlxtend.regressor import StackingCVRegressor
-#from learntools.core import *
 
 def display_all(df):
     with pd.option_context("display.max_rows",1000):
@@ -72,10 +71,9 @@ test_data = pd.read_csv(test_path)
 print("Train set size:", train_data.shape)
 print("Test set size:", test_data.shape)
 
-# Deleting detected outliers
+# Deleting detected outlier
 train_data = train_data[train_data.GrLivArea < 4500]
-print("Train set size:", train_data.shape)
-print("Test set size:", test_data.shape)
+
 # Reset index
 train_data.reset_index(drop=True, inplace=True)
 
@@ -84,8 +82,8 @@ test_features = test_data
 
 
 #%%
-# Create target object and call it y
-y = train_data.SalePrice
+# Create target object and call it y (normalize with log(f+1) )
+y = np.log(train_data.SalePrice+1)
 
 features = train_data.columns[:-1]
 # Prepare X
@@ -97,69 +95,65 @@ test_X = test_data[features]
 combined_X = pd.concat([input_X,test_X])
 
 combined_X = prepareData(combined_X)
-print(combined_X.shape)
+print("Combined set size:", combined_X.shape)
 
 
 input_X = combined_X.iloc[:len(y), :]
 test_X = combined_X.iloc[len(input_X):, :]
 
-# %%
-# Split into validation and training data
-train_X, val_X, train_y, val_y = train_test_split(input_X, y, random_state=1)
-
-xgb_model = XGBRegressor(random_state=1, objective='reg:squarederror', silent=1, n_estimators=3100, learning_rate=0.008, max_depth=4, subsample=0.80, colsample_bytree=0.7, gamma=1  )
-xgb_model.fit(train_X, train_y)
-xgb_val_predictions = xgb_model.predict(val_X)
-xgb_val_mae = mean_absolute_error(xgb_val_predictions, val_y)
-print("Validation MAE for XGB Regressor Model: {:,.0f}".format(xgb_val_mae))
-
-gb_model = GradientBoostingRegressor(n_estimators=3250, learning_rate=0.008,
-                                   max_depth=4, max_features='sqrt',
-                                   min_samples_leaf=15, min_samples_split=10, 
-                                   loss='huber', random_state=1)
-
-
-gb_model.fit(train_X,train_y)
-gb_val_predictions = gb_model.predict(val_X)
-gb_val_mae = mean_absolute_error(gb_val_predictions, val_y)
-print("Validation MAE for GB Regressor Model: {:,.0f}".format(gb_val_mae))
-
-# Define the model. Set random_state to 1
-rf_model = RandomForestRegressor(random_state=1,n_estimators=100)
-rf_model.fit(train_X, train_y)
-rf_val_predictions = rf_model.predict(val_X)
-rf_val_mae = mean_absolute_error(rf_val_predictions, val_y)
-print("Validation MAE for Random Forest Model: {:,.0f}".format(rf_val_mae))
-
-
-combined_predictions = (0.2*gb_val_predictions + 0.7*xgb_val_predictions + 0.1*rf_val_predictions)
-combined_val_mae = mean_absolute_error(combined_predictions, val_y)
-print("Validation MAE for Combined models: {:,.0f}".format(combined_val_mae))
-
-# To improve accuracy, create a new Random Forest model which you will train on all training data
-rf_model_on_full_data = XGBRegressor(random_state=1, objective='reg:squarederror', silent=1, n_estimators=3100, learning_rate=0.008, max_depth=4, subsample=0.80, colsample_bytree=0.7, gamma=1 )
-
-# fit rf_model_on_full_data on all data from the training data
-rf_model_on_full_data.fit(input_X,y)
-
-
-
 #%%
+
+# Fitting with all data
+
+gbr = GradientBoostingRegressor(max_depth=4, n_estimators=150, random_state=1)
+gbr.fit(input_X, y)
+gbr_score = np.sqrt(-cross_val_score(gbr, input_X, y, cv=5, scoring="neg_mean_squared_error")).mean()
+print("Validation GBR : ", gbr_score)
+
+xgbr = XGBRegressor(random_state=1, objective='reg:squarederror', max_depth=5, n_estimators=400)
+xgbr.fit(input_X, y)
+xgbr_val = np.sqrt(-cross_val_score(xgbr, input_X, y, cv=5, scoring="neg_mean_squared_error")).mean()
+print("Validation XGBR : ", xgbr_val)
+
+lsr = Lasso(alpha=0.00047,random_state=1)
+lsr.fit(input_X, y)
+lasso_val = np.sqrt(-cross_val_score(lsr, input_X, y, cv=5, scoring="neg_mean_squared_error")).mean()
+print("Validation Lasso : ", lasso_val)
+
+rr = Ridge(alpha=13, random_state=1)
+rr.fit(input_X, y)
+ridge_val = np.sqrt(-cross_val_score(rr, input_X, y, cv=5, scoring="neg_mean_squared_error")).mean()
+print("Validation Ridge : ", ridge_val)
+
+print("Combined : ", 0.1 * gbr_score + 0.3 * xgbr_val +  0.3 * lasso_val + 0.3 * ridge_val)
+
+# Get train predict for manual adjustment
+train_predict = 0.1 * gbr.predict(input_X) + 0.3 * xgbr.predict(input_X) + 0.3 * lsr.predict(input_X) + 0.3 * rr.predict(input_X)
+
+# Manual adjustment
+q1 = pd.DataFrame(train_predict).quantile(0.0092) # << Manually calculated
+pre_df = pd.DataFrame(train_predict)
+pre_df["SalePrice"] = train_predict
+pre_df = pre_df[["SalePrice"]]
+pre_df.loc[pre_df.SalePrice <= q1[0], "SalePrice"] = pre_df.loc[pre_df.SalePrice <= q1[0], "SalePrice"] *0.99
+train_predict = np.array(pre_df.SalePrice)
+plt.figure(figsize=(8, 8))
+plt.scatter(y, train_predict)
+plt.plot(range(10, 15), range(10, 15), color="blue")
+
+
+
 # make predictions which we will submit. 
-test_preds = rf_model_on_full_data.predict(test_X)
+test_predict = 0.1 * gbr.predict(test_X) + 0.3 * xgbr.predict(test_X) + 0.3 * lsr.predict(test_X) + 0.3 * rr.predict(test_X)
+q1 = pd.DataFrame(test_predict).quantile(0.0092)
+pre_df = pd.DataFrame(test_predict)
+pre_df["SalePrice"] = test_predict
+pre_df = pre_df[["SalePrice"]]
+pre_df.loc[pre_df.SalePrice <= q1[0], "SalePrice"] = pre_df.loc[pre_df.SalePrice <= q1[0], "SalePrice"] *0.96
+test_predict = np.array(pre_df.SalePrice)
 
 # The lines below shows how to save predictions in format used for competition scoring
-# Just uncomment them.
 
 output = pd.DataFrame({'Id': test_data.Id,
-                       'SalePrice': test_preds})
-
-output.to_csv('submission.csv', index=False)
-
-
-
-#%%
-
-
-
-
+                       'SalePrice': np.exp(test_predict)-1})
+output.to_csv('submission2.csv', index=False)
