@@ -76,6 +76,7 @@ print("Test set size:", test_data.shape)
 
 # Deleting detected outliers
 train_data = train_data[train_data.GrLivArea < 4500]
+train_data = train_data[train_data.LotArea < 100000]
 # Reset index
 train_data.reset_index(drop=True, inplace=True)
 
